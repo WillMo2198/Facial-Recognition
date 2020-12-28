@@ -1,11 +1,11 @@
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageEnhance
 from os import listdir, mkdir
 from random import randint
 from tqdm import tqdm
 import cv2
 
-face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+face_cascade = cv2.CascadeClassifier('face.xml')
 profiles = []
 width_height = 100
 len_before = 0
@@ -48,15 +48,14 @@ class ANN:
 
 
 def new_profile(new_prof_name):
-    global cap, img, len_before
-    len_before = len('Profiles/{0}'.format(new_prof_name))
+    global cap, img
     cap = cv2.VideoCapture(0)
     try:
         mkdir('Profiles/{0}'.format(new_prof_name))
         for iiii in tqdm(range(150)):
             ret1, img1 = cap.read()
             cv2.imshow('Facial Recognition', img1)
-            gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+            gray1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
             faces1 = face_cascade.detectMultiScale(img1, 1.3, 5)
             for (x1, y1, w1, h1) in faces1:
                 cv2.rectangle(img1, (x1, y1), (x1 + w1, y1 + h1), (0, 255, 0), 2)
@@ -79,7 +78,7 @@ def new_profile(new_prof_name):
                 pass
             for iiii in range(50):
                 ret1, img1 = cap.read()
-                gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+                gray1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
                 faces1 = face_cascade.detectMultiScale(gray1, 1.3, 5)
                 for (x1, y1, w1, h1) in faces1:
                     cv2.rectangle(img1, (x1, y1), (x1 + w1, y1 + h1), (0, 255, 0), 2)
@@ -99,14 +98,22 @@ def new_profile(new_prof_name):
     for ii in range(len(dataset1)):
         if '.png' not in dataset1[ii]:
             to_pop.append(ii)
-    dataset1.pop(to_pop[0])
-    dataset1.pop(to_pop[1]-1)
+    print(to_pop)
+    print(len(dataset1))
+    try:
+        dataset1.pop(to_pop[0]-1)
+        dataset1.pop(to_pop[1]-2)
+    except IndexError:
+        pass
     to_pop = []
     for ii in range(len(dataset2)):
         if '.png' not in dataset2[ii]:
             to_pop.append(ii)
-    dataset2.pop(to_pop[0])
-    dataset2.pop(to_pop[1] - 1)
+    try:
+        dataset2.pop(to_pop[0]-1)
+        dataset2.pop(to_pop[1]-2)
+    except IndexError:
+        pass
     for ii in range(len(dataset2)):
         dataset2[ii] = 'Profiles/Other/{0}'.format(dataset2[ii])
     val1_max = len(dataset1)
@@ -141,18 +148,9 @@ def read(inputs):
     global iteration
     hidden = ANN().s(np.dot(np.asarray(inputs), profiles[-1][1].weights1))
     output = ANN().s(np.dot(hidden, profiles[-1][1].weights2))
-    print(output)
     if output[0] >= output[1]:
-        iteration = 0
         return profiles[-1][0]
     else:
-        iteration += 1
-        if iteration == 15:
-            iteration = 0
-            if input('Edit profiles? ') in ['y', 'Y']:
-                new_profile(input('Name of profile: '))
-            else:
-                pass
         return 'Other'
 
 
@@ -168,22 +166,77 @@ for x in range(len(listdir('Profiles/'))):
         new_profile(input('No users found. New user name: '))
 
 cap = cv2.VideoCapture(0)
+bright = 0
+no_face = 0
+enhancer = None
+iteration1 = 0
+iteration2 = 0
+iteration3 = 0
 
 while True:
-    ret, img = cap.read()
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    ok, img = cap.read()
+    if bright == 1:
+        enhancer = ImageEnhance.Brightness(Image.fromarray(img))
+        img = enhancer.enhance(.7)
+        enhancer = ImageEnhance.Sharpness(img)
+        img = enhancer.enhance(2)
+    if bright == 2:
+        enhancer = ImageEnhance.Brightness(Image.fromarray(img))
+        img = enhancer.enhance(2)
+        enhancer = ImageEnhance.Sharpness(img)
+        img = enhancer.enhance(2)
+    gray = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2GRAY)
     faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+    name = ''
     for (x, y, w, h) in faces:
         roi_gray = gray[y:y + h, x:x + w]
-        edges = np.asarray(cv2.Canny(np.asarray(Image.fromarray(roi_gray).resize((width_height, width_height)).crop((20, 20, 80, 90))), 150, 200))
-        edges = edges.flatten()
-        name = read(edges)
-        if name == 'Other':
-            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
-        else:
-            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
-        cv2.putText(img, name, (x + w - 100, y + h - 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (11, 255, 255), 2, cv2.LINE_AA)
-    cv2.imshow('Facial Recognition', img)
+        name = read(np.asarray(cv2.Canny(np.asarray(Image.fromarray(roi_gray).resize((width_height, width_height)).crop((20, 20, 80, 90))), 150, 200)).flatten())
+        if faces == ():
+            break
+        if name == 'Other' and bright == 0:
+            img = cv2.rectangle(np.asarray(img), (x, y), (x + w, y + h), (0, 0, 255), 2)
+            iteration2 += 1
+            if iteration2 >= 15:
+                bright = 1
+                iteration2 = 0
+        elif name == 'Other' and bright == 1:
+            img = cv2.rectangle(np.asarray(img), (x, y), (x + w, y + h), (0, 0, 255), 2)
+            iteration2 += 1
+            if iteration2 >= 15:
+                bright = 2
+                iteration2 = 0
+        elif name == 'Other' and bright == 2:
+            img = cv2.rectangle(np.asarray(img), (x, y), (x + w, y + h), (0, 0, 255), 2)
+            iteration2 += 1
+            if iteration2 >= 15:
+                bright = 0
+                iteration2 = 0
+        elif name != 'Other':
+            img = cv2.rectangle(np.asarray(img), (x, y), (x + w, y + h), (255, 0, 0), 2)
+            iteration2 = 0
+    if name != '':
+        img = cv2.putText(np.asarray(img), name, (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 0, 0), 4, cv2.LINE_AA)
+        iteration3 += 1
+        if iteration3 == 10:
+            iteration3 = 0
+            iteration2 = 0
+    else:
+        iteration1 += 1
+    if bright == 0 and name == '':
+        if iteration1 >= 15:
+            bright = 1
+            iteration1 = 0
+    elif bright == 1 and name == '':
+        iteration1 += 1
+        if iteration1 >= 15:
+            bright = 2
+            iteration1 = 0
+    elif bright == 2 and name == '':
+        iteration1 += 1
+        if iteration1 >= 15:
+            bright = 0
+            iteration1 = 0
+    cv2.imshow('Facial Recognition', np.asarray(img))
     k = cv2.waitKey(30) & 0xff
     if k == 27:
         cap.release()
