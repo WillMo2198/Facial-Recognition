@@ -8,7 +8,6 @@ import cv2
 
 face_cascade = cv2.CascadeClassifier('face.xml')
 profiles = []
-width_height = 100
 np.set_printoptions(suppress=True)
 filterwarnings("ignore")
 
@@ -23,13 +22,6 @@ class ANN:
             self.weights2 = np.random.uniform(low=.0001, high=.9999, size=(200, 2))
         self.list = []
 
-    @staticmethod
-    def s(xx, deriv=False):
-        if deriv:
-            return 1/(1 + np.exp(-xx))*(1-1/(1 + np.exp(-xx)))
-        else:
-            return 1/(1 + np.exp(-xx))
-
     def train(self, target_val):
         target_output = None
         if target_val == 0:
@@ -38,14 +30,21 @@ class ANN:
             target_output = np.array([0., 1.])
         for ii in range(50):
             inputs = np.asarray(self.list)
-            hidden = self.s(np.dot(inputs, self.weights1))
-            output = self.s(np.dot(hidden, self.weights2))
+            hidden = s(np.dot(inputs, self.weights1))
+            output = s(np.dot(hidden, self.weights2))
             output_error = target_output - output
-            output_delta = output_error * self.s(output, deriv=True)
+            output_delta = output_error * s(output, deriv=True)
             hidden_error = output_delta.dot(self.weights2.T)
-            hidden_delta = hidden_error * self.s(hidden, deriv=True)
+            hidden_delta = hidden_error * s(hidden, deriv=True)
             self.weights2 += hidden.T.dot(output_delta)
             self.weights1 += inputs.T.dot(hidden_delta)
+
+
+def s(xx, deriv=False):
+    if deriv:
+        return 1/(1 + np.exp(-xx))*(1-1/(1 + np.exp(-xx)))
+    else:
+        return 1/(1 + np.exp(-xx))
 
 
 def new_profile(new_prof_name):
@@ -123,23 +122,17 @@ def new_profile(new_prof_name):
             target = 0
         if target == 0:
             val1 += 1
-            try:
-                img = np.asarray(cv2.Canny(np.asarray(Image.open(dataset1[val1])), 150, 200)).flatten()
-                profiles[-1][1].list = np.asarray([img])
-                profiles[-1][1].train(0)
-            except UnidentifiedImageError:
-                pass
+            img = np.asarray(cv2.Canny(np.asarray(Image.open(dataset1[val1])), 150, 200))
+            profiles[-1][1].list = np.asarray([img.flatten()])
+            profiles[-1][1].train(0)
         elif target == 1:
             val2 += 1
-            try:
-                frame = cv2.imread(dataset2[val2], 0)
-                for (xi, yi, wi, hi) in face_cascade.detectMultiScale(frame, 1.3, 5):
-                    roi1 = frame[yi:yi + hi, xi:xi + wi]
-                    img = np.asarray(cv2.Canny(np.asarray(Image.fromarray(roi1).resize((width_height, width_height)).crop((20, 20, 80, 90))), 150, 200)).flatten()
-                    profiles[-1][1].list = np.asarray([img])
-                    profiles[-1][1].train(1)
-            except UnidentifiedImageError:
-                pass
+            frame = cv2.imread(dataset2[val2], 0)
+            for (xi, yi, wi, hi) in face_cascade.detectMultiScale(frame, 1.3, 5):
+                roi1 = frame[yi:yi + hi, xi:xi + wi]
+                img = np.asarray(cv2.Canny(np.asarray(Image.fromarray(roi1).resize((100, 100)).crop((20, 20, 80, 90))), 150, 200))
+                profiles[-1][1].list = np.asarray([img.flatten()])
+                profiles[-1][1].train(1)
     np.save('Profiles/{0}/weights1.npy'.format(profiles[-1][0]), profiles[-1][1].weights1)
     np.save('Profiles/{0}/weights2.npy'.format(profiles[-1][0]), profiles[-1][1].weights2)
 
@@ -149,8 +142,8 @@ iteration = 0
 
 def read(inputs, user):
     global iteration
-    hidden = ANN().s(np.dot(np.asarray(inputs), profiles[user][1].weights1))
-    output = ANN().s(np.dot(hidden, profiles[user][1].weights2))
+    hidden = s(np.dot(np.asarray(inputs), profiles[user][1].weights1))
+    output = s(np.dot(hidden, profiles[user][1].weights2))
     if output[0] >= output[1]:
         return profiles[user][0]
     else:
@@ -214,7 +207,7 @@ while True:
         for (x, y, w, h) in faces:
             roi_gray = gray[y:y + h, x:x + w]
             img = cv2.rectangle(np.asarray(img), (x, y), (x + w, y + h), profiles[i][4], 2)
-            edges = np.asarray(cv2.Canny(np.asarray(Image.fromarray(roi_gray).resize((width_height, width_height)).crop((20, 20, 80, 90))), 150, 200))
+            edges = np.asarray(cv2.Canny(np.asarray(Image.fromarray(roi_gray).resize((100, 100)).crop((20, 20, 80, 90))), 150, 200))
             name = read(edges.flatten(), i-1)
             if faces == ():
                 break
