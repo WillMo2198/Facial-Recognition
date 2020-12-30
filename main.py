@@ -1,4 +1,4 @@
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, UnidentifiedImageError
 from warnings import filterwarnings
 from os import listdir, mkdir
 from random import randint
@@ -8,7 +8,6 @@ import cv2
 
 face_cascade = cv2.CascadeClassifier('face.xml')
 profiles = []
-width_height = 100
 np.set_printoptions(suppress=True)
 filterwarnings("ignore")
 
@@ -81,7 +80,7 @@ def new_profile(new_prof_name):
                 for (x1, y1, w1, h1) in faces1:
                     cv2.rectangle(img1, (x1, y1), (x1 + w1, y1 + h1), (0, 255, 0), 2)
                     roi1 = gray1[y1:y1 + h1, x1:x1 + w1]
-                    Image.fromarray(roi1).resize((100, 100)).crop((20, 20, 80, 90)).save('Profiles/{0}/{1}.png'.format(new_prof_name, loop1))
+                    Image.fromarray(roi1).resize((100, 100)).crop((20, 20, 80, 90)).save('Profiles/{0}/{1}.png'.format(new_prof_name, len('Profiles/{0}'.format(new_prof_name))+1))
                 cv2.imshow('Facial Recognition', img1)
                 cv2.waitKey(1)
                 if len(faces1) != 0:
@@ -123,20 +122,23 @@ def new_profile(new_prof_name):
             target = 0
         if target == 0:
             val1 += 1
-            img = np.asarray(cv2.Canny(np.asarray(Image.open(dataset1[val1])), 150, 200))
-            enhancer1 = ImageEnhance.Brightness(Image.fromarray(img))
-            img = enhancer1.enhance(2)
-            img = np.asarray(img).flatten()
-            profiles[-1][1].list = np.asarray([img])
-            profiles[-1][1].train(0)
+            try:
+                img = np.asarray(cv2.Canny(np.asarray(Image.open(dataset1[val1])), 150, 200))
+                profiles[-1][1].list = np.asarray([img.flatten()])
+                profiles[-1][1].train(0)
+            except UnidentifiedImageError:
+                pass
         elif target == 1:
             val2 += 1
-            frame = cv2.imread(dataset2[val2], 0)
-            for (xi, yi, wi, hi) in face_cascade.detectMultiScale(frame, 1.3, 5):
-                roi1 = frame[yi:yi + hi, xi:xi + wi]
-                img = np.asarray(cv2.Canny(np.asarray(Image.fromarray(roi1).resize((width_height, width_height)).crop((20, 20, 80, 90))), 150, 200)).flatten()
-                profiles[-1][1].list = np.asarray([img])
-                profiles[-1][1].train(1)
+            try:
+                frame = cv2.imread(dataset2[val2], 0)
+                for (xi, yi, wi, hi) in face_cascade.detectMultiScale(frame, 1.3, 5):
+                    roi1 = frame[yi:yi + hi, xi:xi + wi]
+                    img = np.asarray(cv2.Canny(np.asarray(Image.fromarray(roi1).resize((100, 100)).crop((20, 20, 80, 90))), 150, 200))
+                    profiles[-1][1].list = np.asarray([img.flatten()])
+                    profiles[-1][1].train(1)
+            except UnidentifiedImageError:
+                pass
     np.save('Profiles/{0}/weights1.npy'.format(profiles[-1][0]), profiles[-1][1].weights1)
     np.save('Profiles/{0}/weights2.npy'.format(profiles[-1][0]), profiles[-1][1].weights2)
 
@@ -156,7 +158,7 @@ def read(inputs, user):
 
 for x in range(len(listdir('Profiles/'))):
     if listdir('Profiles/')[x] != 'Other':
-        profiles.append([listdir('Profiles/')[x], ANN(), (randint(0, 255), randint(0, 255), randint(0, 255))])
+        profiles.append([listdir('Profiles/')[x], ANN(), [], 0, (randint(0, 255), randint(0, 255), randint(0, 255))])
         edit = input('Edit Users? ')
         if edit in ['y', 'Y']:
             new_profile(input('Name: '))
@@ -178,50 +180,50 @@ no_face = 0
 avg = 0
 avg1 = 0
 loop = 1
-other_color = (randint(0, 255), randint(0, 255), randint(0, 255))
+other_color = (0, 0, 0)
 
 while True:
     ok, img = cap.read()
     if bright == 1:
+        other_color = (255, 255, 255)
         try:
             enhancer = ImageEnhance.Brightness(img)
             img = enhancer.enhance(.5)
             enhancer = ImageEnhance.Sharpness(img)
             img = enhancer.enhance(2)
         except AttributeError:
-            enhancer = ImageEnhance.Brightness(np.asarray(img))
+            enhancer = ImageEnhance.Brightness(Image.fromarray(img))
             img = enhancer.enhance(.5)
-            enhancer = ImageEnhance.Sharpness(np.asarray(img))
+            enhancer = ImageEnhance.Sharpness(img)
             img = enhancer.enhance(2)
     elif bright == 2:
+        other_color = (255, 255, 255)
         try:
             enhancer = ImageEnhance.Brightness(img)
-            img = enhancer.enhance(2)
-            enhancer = ImageEnhance.Sharpness(img)
-            img = enhancer.enhance(2)
+            img = enhancer.enhance(3)
         except AttributeError:
-            enhancer = ImageEnhance.Brightness(np.asarray(img))
-            img = enhancer.enhance(2)
-            enhancer = ImageEnhance.Contrast(np.asarray(img))
-            img = enhancer.enhance(4)
-            enhancer = ImageEnhance.Sharpness(np.asarray(img))
-            img = enhancer.enhance(2)
-    gray = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2GRAY)
+            enhancer = ImageEnhance.Brightness(Image.fromarray(img))
+            img = enhancer.enhance(3)
+    try:
+        gray = cv2.cvtColor(Image.fromarray(img), cv2.COLOR_RGB2GRAY)
+    except TypeError:
+        gray = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2GRAY)
+    except AttributeError:
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     faces = face_cascade.detectMultiScale(gray, 1.3, 5)
     name = ''
     edges = []
     for i in range(len(profiles)):
         for (x, y, w, h) in faces:
             roi_gray = gray[y:y + h, x:x + w]
-            edges = np.asarray(cv2.Canny(np.asarray(Image.fromarray(roi_gray).resize((width_height, width_height)).crop((20, 20, 80, 90))), 150, 200))
+            img = cv2.rectangle(np.asarray(img), (x, y), (x + w, y + h), profiles[i][4], 2)
+            edges = np.asarray(cv2.Canny(np.asarray(Image.fromarray(roi_gray).resize((100, 100)).crop((20, 20, 80, 90))), 150, 200))
             cv2.imshow('Edges', edges)
             name = read(edges.flatten(), i-1)
             if faces == ():
                 break
             if name == 'Other':
                 img = cv2.rectangle(np.asarray(img), (x, y), (x + w, y + h), other_color, 2)
-                no_face += 1
-                avg = int((no_face / loop) * 100)
                 if bright == 0:
                     iteration2 += 1
                     if iteration2 >= 20:
@@ -237,9 +239,8 @@ while True:
                     if iteration2 >= 20:
                         bright = 0
                         iteration2 = 0
-                img = cv2.putText(np.asarray(img), '{0}: {1}%'.format(name, avg), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 4, cv2.LINE_AA)
             else:
-                img = cv2.rectangle(np.asarray(img), (x, y), (x + w, y + h), profiles[i][2], 2)
+                img = cv2.rectangle(np.asarray(img), (x, y), (x + w, y + h), profiles[i][4], 2)
                 iteration3 += 1
                 face += 1
                 avg = int((face / loop) * 100)
@@ -247,12 +248,15 @@ while True:
                     iteration1 = 0
                     iteration2 = 0
                     iteration3 = 0
-                img = cv2.putText(np.asarray(img), '{0}: {1}%'.format(profiles[i][0], avg), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 4, cv2.LINE_AA)
+        img = cv2.putText(np.asarray(img), 'Other: {0}%'.format(100-avg), (0, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, other_color, 4, cv2.LINE_AA)
+        img = cv2.putText(np.asarray(img), '{0}: {1}%'.format(profiles[i][0], avg), (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, profiles[i][4], 4, cv2.LINE_AA)
         loop += 1
-        if loop == 50:
+        if loop == 100:
             loop = 1
             face = 0
             no_face = 0
+            avg = 0
+            avg1 = 0
         if name == '':
             if bright == 0:
                 iteration1 += 1
@@ -261,6 +265,7 @@ while True:
                     iteration1 = 0
                     iteration2 = 0
                     iteration3 = 0
+                    profiles[i][2] = [0]
             elif bright == 1:
                 iteration1 += 1
                 if iteration1 >= 25:
@@ -268,6 +273,7 @@ while True:
                     iteration1 = 0
                     iteration2 = 0
                     iteration3 = 0
+                    profiles[i][2] = [0]
             elif bright == 2:
                 iteration1 += 1
                 if iteration1 >= 25:
@@ -275,8 +281,9 @@ while True:
                     iteration1 = 0
                     iteration2 = 0
                     iteration3 = 0
+                    profiles[i][2] = [0]
         cv2.imshow('Facial Recognition', np.asarray(img))
-    k = cv2.waitKey(1) & 0xff
+    k = cv2.waitKey(30) & 0xff
     if k == 27:
         cap.release()
         cv2.destroyAllWindows()
