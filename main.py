@@ -1,290 +1,133 @@
-from PIL import Image, ImageEnhance, UnidentifiedImageError
-from warnings import filterwarnings
-from os import listdir, mkdir
+from PIL import Image, ImageEnhance
 from random import randint
-from tqdm import tqdm
+from tqdm import trange
 import numpy as np
 import cv2
-
-face_cascade = cv2.CascadeClassifier('face.xml')
-profiles = []
-np.set_printoptions(suppress=True)
-filterwarnings("ignore")
+import os
 
 
-class ANN:
-    def __init__(self):
-        try:
-            self.weights1 = np.load('Profiles/{0}/weights1.npy'.format(listdir('Profiles/')[-1]))
-            self.weights2 = np.load('Profiles/{0}/weights2.npy'.format(listdir('Profiles/')[-1]))
-        except FileNotFoundError:
-            self.weights1 = np.random.uniform(low=.0001, high=.9999, size=(4200, 200))
-            self.weights2 = np.random.uniform(low=.0001, high=.9999, size=(200, 2))
-        self.list = []
-
-    def train(self, target_val):
-        target_output = None
-        if target_val == 0:
-            target_output = np.array([1., 0.])
-        elif target_val == 1:
-            target_output = np.array([0., 1.])
-        for ii in range(50):
-            inputs = np.asarray(self.list)
-            hidden = s(np.dot(inputs, self.weights1))
-            output = s(np.dot(hidden, self.weights2))
-            output_error = target_output - output
-            output_delta = output_error * s(output, deriv=True)
-            hidden_error = output_delta.dot(self.weights2.T)
-            hidden_delta = hidden_error * s(hidden, deriv=True)
-            self.weights2 += hidden.T.dot(output_delta)
-            self.weights1 += inputs.T.dot(hidden_delta)
-
-
-def s(xx, deriv=False):
-    if deriv:
-        return 1/(1 + np.exp(-xx))*(1-1/(1 + np.exp(-xx)))
-    else:
-        return 1/(1 + np.exp(-xx))
-
-
-def new_profile(new_prof_name):
-    global cap, img
-    cap = cv2.VideoCapture(0)
-    try:
-        mkdir('Profiles/{0}'.format(new_prof_name))
-        loop1 = 0
-        while True:
-            ret1, img1 = cap.read()
-            gray1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
-            faces1 = face_cascade.detectMultiScale(img1, 1.3, 5)
-            for (x1, y1, w1, h1) in faces1:
-                cv2.rectangle(img1, (x1, y1), (x1 + w1, y1 + h1), (0, 255, 0), 2)
-                roi1 = gray1[y1:y1 + h1, x1:x1 + w1]
-                Image.fromarray(roi1).resize((100, 100)).crop((20, 20, 80, 90)).save('Profiles/{0}/{1}.png'.format(new_prof_name, loop1))
-            cv2.imshow('Facial Recognition', img1)
-            cv2.waitKey(1)
-            if len(faces1) != 0:
-                loop1 += 1
-            if loop1 == 500:
-                return
-    except FileExistsError:
-        path = input('Add more images? ')
-        if path in ['n', 'N']:
-            pass
-        else:
-            loop1 = 0
-            while True:
-                ret1, img1 = cap.read()
-                gray1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
-                faces1 = face_cascade.detectMultiScale(img1, 1.3, 5)
-                for (x1, y1, w1, h1) in faces1:
-                    cv2.rectangle(img1, (x1, y1), (x1 + w1, y1 + h1), (0, 255, 0), 2)
-                    roi1 = gray1[y1:y1 + h1, x1:x1 + w1]
-                    Image.fromarray(roi1).resize((100, 100)).crop((20, 20, 80, 90)).save('Profiles/{0}/{1}.png'.format(new_prof_name, len('Profiles/{0}'.format(new_prof_name))+1))
-                cv2.imshow('Facial Recognition', img1)
-                cv2.waitKey(1)
-                if len(faces1) != 0:
-                    loop1 += 1
-                if len(listdir('Profiles/{0}'.format(new_prof_name))) == 500:
-                    break
-    val1 = 0
-    val2 = 0
-    dataset1 = listdir('Profiles/{0}'.format(new_prof_name))
-    dataset2 = listdir('Profiles/Other')
-    to_pop = []
-    for ii in range(len(dataset1)):
-        dataset1[ii] = 'Profiles/{0}/{1}'.format(new_prof_name, dataset1[ii])
-    for ii in range(len(dataset1)):
-        if '.png' not in dataset1[ii]:
-            to_pop.append(ii)
-    try:
-        dataset1.pop(to_pop[0]-1)
-        dataset1.pop(to_pop[1]-2)
-    except IndexError:
-        pass
-    to_pop = []
-    for ii in range(len(dataset2)):
-        if '.png' not in dataset2[ii]:
-            to_pop.append(ii)
-    try:
-        dataset2.pop(to_pop[0]-1)
-        dataset2.pop(to_pop[1]-2)
-    except IndexError:
-        pass
-    for ii in range(len(dataset2)):
-        dataset2[ii] = 'Profiles/Other/{0}'.format(dataset2[ii])
-    val_max = len(dataset1)
-    for _ in tqdm(range(val_max+val_max)):
-        target = randint(0, 1)
-        if val1 == val_max-1:
-            target = 1
-        elif val2 == val_max-1:
-            target = 0
-        if target == 0:
-            val1 += 1
-            try:
-                img = np.asarray(cv2.Canny(np.asarray(Image.open(dataset1[val1])), 150, 200))
-                profiles[-1][1].list = np.asarray([img.flatten()])
-                profiles[-1][1].train(0)
-            except UnidentifiedImageError:
-                pass
-        elif target == 1:
-            val2 += 1
-            try:
-                frame = cv2.imread(dataset2[val2], 0)
-                for (xi, yi, wi, hi) in face_cascade.detectMultiScale(frame, 1.3, 5):
-                    roi1 = frame[yi:yi + hi, xi:xi + wi]
-                    img = np.asarray(cv2.Canny(np.asarray(Image.fromarray(roi1).resize((100, 100)).crop((20, 20, 80, 90))), 150, 200))
-                    profiles[-1][1].list = np.asarray([img.flatten()])
-                    profiles[-1][1].train(1)
-            except UnidentifiedImageError:
-                pass
-    np.save('Profiles/{0}/weights1.npy'.format(profiles[-1][0]), profiles[-1][1].weights1)
-    np.save('Profiles/{0}/weights2.npy'.format(profiles[-1][0]), profiles[-1][1].weights2)
-
-
-iteration = 0
-
-
-def read(inputs, user):
-    global iteration
-    hidden = s(np.dot(np.asarray(inputs), profiles[user][1].weights1))
-    output = s(np.dot(hidden, profiles[user][1].weights2))
-    if output[0] >= output[1]:
-        return profiles[user][0]
-    else:
-        return 'Other'
-
-
-for x in range(len(listdir('Profiles/'))):
-    if listdir('Profiles/')[x] != 'Other':
-        profiles.append([listdir('Profiles/')[x], ANN(), [], 0, (randint(0, 255), randint(0, 255), randint(0, 255))])
-        edit = input('Edit Users? ')
-        if edit in ['y', 'Y']:
-            new_profile(input('Name: '))
-        else:
-            break
-    elif len(listdir('Profiles')) == 1:
-        new_profile(input('No users found. New user name: '))
-        new_profile(listdir('Profiles/')[-1])
-        continue
-
+face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+np.set_printoptions(suppress=False)
 cap = cv2.VideoCapture(0)
-bright = 0
-enhancer = None
-iteration1 = 0
-iteration2 = 0
-iteration3 = 0
-face = 0
-no_face = 0
-avg = 0
-avg1 = 0
-loop = 1
-other_color = (0, 0, 0)
+
+
+def nonlin(xx, deriv=False):
+    if deriv:
+        return nonlin(xx)*(1-nonlin(xx))
+    return 1/(1 + np.exp(-xx))
+
+
+def new_user(name):
+    try:
+        os.mkdir('Users/{0}'.format(name))
+        layer1 = np.load('Users/{0}/weights1.npy'.format(name))
+        layer2 = np.load('Users/{0}/weights2.npy'.format(name))
+    except FileExistsError or FileNotFoundError:
+        layer1 = np.random.uniform(low=0., high=1., size=(75 * 75, 25))
+        layer2 = np.random.uniform(low=0., high=1., size=(25, 1))
+    iteration2 = 0
+    iteration3 = 0
+    np.random.seed(1)
+    in_data = []
+    for i in range(100):
+        _, img1 = cap.read()
+        gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+        faces1 = face_cascade.detectMultiScale(gray1, 1.3, 5)
+        for (x1, y1, w1, h1) in faces1:
+            roi1 = Image.fromarray(img1[y1:y1 + h1, x1:x1 + w1])
+            enhancer1 = ImageEnhance.Brightness(roi1)
+            roi1 = enhancer1.enhance(1.5)
+            roi1 = roi1.resize((75, 75))
+            roi1 = cv2.Canny(np.asarray(roi1), 100, 400)
+            cv2.imshow('img', img1)
+            Image.fromarray(roi1).save('Users/{0}/{1}.jpg'.format(name, i))
+            k1 = cv2.waitKey(30) & 0xff
+            if k1 == 27:
+                cap.release()
+                cv2.destroyAllWindows()
+    out = randint(0, 1)
+    for _ in trange(500):
+        if out == 0:
+            img1 = cv2.imread('Other/{0}'.format(os.listdir('Other')[iteration2]), 0)
+            iteration2 += 1
+            faces1 = face_cascade.detectMultiScale(img1, 1.3, 5)
+            if len(faces1) == 0:
+                continue
+            for (x1, y1, w1, h1) in faces1:
+                roi_color1 = Image.fromarray(img1[y1:y1 + h1, x1:x1 + w1])
+                enhancer1 = ImageEnhance.Brightness(roi_color1)
+                roi_color1 = enhancer1.enhance(1.5)
+                roi_color1 = roi_color1.resize((75, 75))
+                roi_color1 = cv2.Canny(np.asarray(roi_color1), 100, 400)
+                in_data = np.asarray(Image.fromarray(roi_color1).resize((75, 75)))
+            if iteration2 == 399:
+                iteration2 -= 1
+                out = 1
+                continue
+        else:
+            in_data = cv2.imread('Users/{0}/{1}'.format(name, os.listdir('Users/{0}/'.format(name))[iteration3]), 0)
+            iteration3 += 1
+            if iteration3 == 98:
+                iteration3 -= 1
+                out = 0
+                continue
+        try:
+            in_data = in_data.flatten()
+            if not np.isnan(in_data[0]):
+                for iii in range(75):
+                    l0 = np.asarray([in_data])
+                    l1 = nonlin(np.dot(l0, layer1))
+                    l2 = nonlin(np.dot(l1, layer2))
+                    print(l2, out)
+                    l2_error = out - l2
+                    l2_delta = l2_error * nonlin(l2, deriv=True)
+                    l1_error = l2_delta.dot(layer2.T)
+                    l1_delta = l1_error * nonlin(l1, deriv=True)
+                    layer2 += l1.T.dot(l2_delta)
+                    layer1 += l0.T.dot(l1_delta)
+        except AttributeError or ValueError:
+            continue
+        out = randint(0, 1)
+        np.save('Users/{0}/weights1.npy'.format(name), layer1)
+        np.save('Users/{0}/weights2.npy'.format(name), layer2)
+    contendors = os.listdir('Users')
+    if len(contendors) > 1:
+        for i in range(len(contendors)):
+            if i+1 > len(contendors):
+                break
+
 
 while True:
-    ok, img = cap.read()
-    if bright == 1:
-        other_color = (255, 255, 255)
-        try:
-            enhancer = ImageEnhance.Brightness(img)
-            img = enhancer.enhance(.5)
-            enhancer = ImageEnhance.Sharpness(img)
-            img = enhancer.enhance(2)
-        except AttributeError:
-            enhancer = ImageEnhance.Brightness(Image.fromarray(img))
-            img = enhancer.enhance(.5)
-            enhancer = ImageEnhance.Sharpness(img)
-            img = enhancer.enhance(2)
-    elif bright == 2:
-        other_color = (255, 255, 255)
-        try:
-            enhancer = ImageEnhance.Brightness(img)
-            img = enhancer.enhance(3)
-        except AttributeError:
-            enhancer = ImageEnhance.Brightness(Image.fromarray(img))
-            img = enhancer.enhance(3)
-    try:
-        gray = cv2.cvtColor(Image.fromarray(img), cv2.COLOR_RGB2GRAY)
-    except TypeError:
-        gray = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2GRAY)
-    except AttributeError:
-        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    _, img = cap.read()
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, 1.3, 5)
-    name = ''
-    edges = []
-    for i in range(len(profiles)):
-        for (x, y, w, h) in faces:
-            roi_gray = gray[y:y + h, x:x + w]
-            img = cv2.rectangle(np.asarray(img), (x, y), (x + w, y + h), profiles[i][4], 2)
-            edges = np.asarray(cv2.Canny(np.asarray(Image.fromarray(roi_gray).resize((100, 100)).crop((20, 20, 80, 90))), 150, 200))
-            cv2.imshow('Edges', edges)
-            name = read(edges.flatten(), i-1)
-            if faces == ():
-                break
-            if name == 'Other':
-                img = cv2.rectangle(np.asarray(img), (x, y), (x + w, y + h), other_color, 2)
-                if bright == 0:
-                    iteration2 += 1
-                    if iteration2 >= 20:
-                        bright = 1
-                        iteration2 = 0
-                elif bright == 1:
-                    iteration2 += 1
-                    if iteration2 >= 20:
-                        bright = 2
-                        iteration2 = 0
-                elif bright == 2:
-                    iteration2 += 1
-                    if iteration2 >= 20:
-                        bright = 0
-                        iteration2 = 0
-            else:
-                img = cv2.rectangle(np.asarray(img), (x, y), (x + w, y + h), profiles[i][4], 2)
-                iteration3 += 1
-                face += 1
-                avg = int((face / loop) * 100)
-                if iteration3 >= 10:
-                    iteration1 = 0
-                    iteration2 = 0
-                    iteration3 = 0
-        img = cv2.putText(np.asarray(img), 'Other: {0}%'.format(100-avg), (0, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, other_color, 4, cv2.LINE_AA)
-        img = cv2.putText(np.asarray(img), '{0}: {1}%'.format(profiles[i][0], avg), (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, profiles[i][4], 4, cv2.LINE_AA)
-        loop += 1
-        if loop == 100:
-            loop = 1
-            face = 0
-            no_face = 0
-            avg = 0
-            avg1 = 0
-        if name == '':
-            if bright == 0:
-                iteration1 += 1
-                if iteration1 >= 25:
-                    bright = 1
-                    iteration1 = 0
-                    iteration2 = 0
-                    iteration3 = 0
-                    profiles[i][2] = [0]
-            elif bright == 1:
-                iteration1 += 1
-                if iteration1 >= 25:
-                    bright = 2
-                    iteration1 = 0
-                    iteration2 = 0
-                    iteration3 = 0
-                    profiles[i][2] = [0]
-            elif bright == 2:
-                iteration1 += 1
-                if iteration1 >= 25:
-                    bright = 0
-                    iteration1 = 0
-                    iteration2 = 0
-                    iteration3 = 0
-                    profiles[i][2] = [0]
-        cv2.imshow('Facial Recognition', np.asarray(img))
+    for (x, y, w, h) in faces:
+        roi = Image.fromarray(img[y:y + h, x:x + w])
+        enhancer = ImageEnhance.Brightness(roi)
+        roi = enhancer.enhance(1.5)
+        roi = roi.resize((75, 75))
+        roi = cv2.Canny(np.asarray(roi), 100, 400)
+        cv2.imshow('img', np.asarray(img))
+        cv2.imshow('lines', np.asarray(roi))
+        roi = np.asarray(roi).flatten().flatten()
+        input_layer = np.asarray(roi)
+        user_out = []
+        out1 = []
+        user = []
+        if len(os.listdir('Users')) > 1:
+            for ii in os.listdir('Users'):
+                hidden = nonlin(np.dot(input_layer, np.load('Users/{0}/weights1.npy'.format(ii))))
+                output = nonlin(np.dot(hidden, np.load('Users/{0}/weights2.npy'.format(ii))))
+                user_out.append([ii, output])
+            for ii in user_out:
+                user.append(ii[0])
+                out1.append(ii[1])
+                print(user[out1.index(max(out1))])
+        else:
+            hidden = nonlin(np.dot(input_layer, np.load('Users/{0}/weights1.npy'.format(os.listdir('Users')[0]))))
+            output = nonlin(np.dot(hidden, np.load('Users/{0}/weights2.npy'.format(os.listdir('Users')[0]))))
+            print(output)
     k = cv2.waitKey(30) & 0xff
     if k == 27:
         cap.release()
         cv2.destroyAllWindows()
-        exit()
