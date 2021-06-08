@@ -2,11 +2,12 @@ from PIL import Image, ImageEnhance
 from random import randint
 from tqdm import trange
 import numpy as np
+import pickle
 import cv2
 import os
 
 
-face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+face_cascade = cv2.CascadeClassifier('face.xml')
 np.set_printoptions(suppress=False)
 cap = cv2.VideoCapture(0)
 
@@ -124,6 +125,19 @@ def new_user(name):
         iteration += 1
 
 
+try:
+    user_color = pickle.load(open("user-colors.pkl", "rb"))
+
+except FileNotFoundError:
+    user_color = {}
+    for iiiii in range(len(os.listdir('Users'))+1):
+        color = (randint(0, 255), randint(0, 255), randint(0, 255))
+        if iiiii == len(os.listdir('Users')):
+            user_color['Other'] = color
+        else:
+            user_color[os.listdir('Users')[iiiii]] = color
+    pickle.dump(user_color, open("user-colors.pkl", "wb"))
+
 while True:
     _, img = cap.read()
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -139,20 +153,32 @@ while True:
         input_layer = np.asarray(roi)
         user_out = []
         out1 = []
-        user = []
+        user = {}
+        user_name = ''
         if len(os.listdir('Users')) > 1:
             for ii in os.listdir('Users'):
                 hidden = nonlin(np.dot(input_layer, np.load('Users/{0}/weights1.npy'.format(ii))))
                 output = nonlin(np.dot(hidden, np.load('Users/{0}/weights2.npy'.format(ii))))
-                user_out.append([ii, output])
-                print(output, ii)
+                user[ii] = output[0]
+            if user[max(user, key=user.get)] <= .5:
+                user_name = 'Other'
+                img = cv2.rectangle(img, (x, y), (x + w, y + h), user_color['Other'], 2)
+                cv2.imshow('img', np.asarray(img))
+            else:
+                user_name = max(user, key=user.get)
+                img = cv2.rectangle(img, (x, y), (x + w, y + h), user_color[user_name], 2)
+                cv2.imshow('img', np.asarray(img))
+            print(user_name)
         else:
             hidden = nonlin(np.dot(input_layer, np.load('Users/{0}/weights1.npy'.format(os.listdir('Users')[0]))))
             output = nonlin(np.dot(hidden, np.load('Users/{0}/weights2.npy'.format(os.listdir('Users')[0]))))
+            print(output)
             if output > 0.5:
+                user_name = os.listdir('Users')[0]
                 img = cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
                 cv2.imshow('img', np.asarray(img))
-            elif output < 0.5:
+            elif output <= 0.5:
+                user_name = 'Other'
                 img = cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
                 cv2.imshow('img', np.asarray(img))
     k = cv2.waitKey(30) & 0xff
